@@ -1,9 +1,16 @@
 services:
+
   mongodb:
-    image: mongo:8
+    image: mongo:7
     restart: unless-stopped
     volumes:
       - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval \"db.adminCommand('ping').ok\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   backend:
     image: ghcr.io/farooq-dev00/three-tier-app-backend:${IMAGE_TAG:-latest}
@@ -13,7 +20,8 @@ services:
     environment:
       MONGO_URI: mongodb://mongodb:27017
     depends_on:
-      - mongodb
+      mongodb:
+        condition: service_healthy
 
   frontend:
     image: ghcr.io/farooq-dev00/three-tier-app-frontend:${IMAGE_TAG:-latest}
