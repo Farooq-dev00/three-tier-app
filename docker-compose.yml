@@ -1,15 +1,12 @@
-
 services:
   mongodb:
     image: mongo:8
-    container_name: mongodb
     restart: unless-stopped
     volumes:
       - mongodb_data:/data/db
 
   backend:
     image: ghcr.io/farooq-dev00/three-tier-app-backend:${IMAGE_TAG:-latest}
-    container_name: backend
     restart: unless-stopped
     ports:
       - "5000:5000"
@@ -20,7 +17,6 @@ services:
 
   frontend:
     image: ghcr.io/farooq-dev00/three-tier-app-frontend:${IMAGE_TAG:-latest}
-    container_name: frontend
     restart: unless-stopped
     ports:
       - "3000:3000"
