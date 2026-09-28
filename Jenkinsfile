@@ -2,8 +2,11 @@ pipeline {
     agent any
 
     environment {
-        REGISTRY = 'ghcr.io'
-        IMAGE_PREFIX = 'ghcr.io/farooq-dev00/three-tier-app'
+        AWS_REGION = 'eu-north-1'
+        ECR_REGISTRY = '377418125520.dkr.ecr.eu-north-1.amazonaws.com'
+        BACKEND_IMAGE = "${ECR_REGISTRY}/three-tier-app-backend"
+        FRONTEND_IMAGE = "${ECR_REGISTRY}/three-tier-app-frontend"
+        IMAGE_TAG = "${BUILD_NUMBER}"
     }
 
     stages {
@@ -14,38 +17,41 @@ pipeline {
             }
         }
 
-        stage('Build Docker Images') {
-            steps {
-                sh '''
-                    docker build -t ${IMAGE_PREFIX}-backend:${BUILD_NUMBER} ./backend
-                    docker build -t ${IMAGE_PREFIX}-frontend:${BUILD_NUMBER} ./frontend
-                '''
-            }
-        }
-
-        stage('Login to GHCR') {
+        stage('Login to ECR') {
             steps {
                 withCredentials([
                     usernamePassword(
-                        credentialsId: 'ghcr',
-                        usernameVariable: 'GHCR_USER',
-                        passwordVariable: 'GHCR_TOKEN'
+                        credentialsId: 'aws-ecr',
+                        usernameVariable: 'AWS_ACCESS_KEY_ID',
+                        passwordVariable: 'AWS_SECRET_ACCESS_KEY'
                     )
                 ]) {
                     sh '''
-                        echo "$GHCR_TOKEN" | docker login ghcr.io \
-                        -u "$GHCR_USER" \
-                        --password-stdin
+                        export AWS_DEFAULT_REGION="$AWS_REGION"
+
+                        aws ecr get-login-password \
+                        | docker login \
+                        --username AWS \
+                        --password-stdin "$ECR_REGISTRY"
                     '''
                 }
             }
         }
 
-        stage('Push Images') {
+        stage('Build Docker Images') {
             steps {
                 sh '''
-                    docker push ${IMAGE_PREFIX}-backend:${BUILD_NUMBER}
-                    docker push ${IMAGE_PREFIX}-frontend:${BUILD_NUMBER}
+                    docker build -t "$BACKEND_IMAGE:$IMAGE_TAG" ./backend
+                    docker build -t "$FRONTEND_IMAGE:$IMAGE_TAG" ./frontend
+                '''
+            }
+        }
+
+        stage('Push Images to ECR') {
+            steps {
+                sh '''
+                    docker push "$BACKEND_IMAGE:$IMAGE_TAG"
+                    docker push "$FRONTEND_IMAGE:$IMAGE_TAG"
                 '''
             }
         }
@@ -53,7 +59,7 @@ pipeline {
         stage('Deploy') {
             steps {
                 sh '''
-                    export IMAGE_TAG=${BUILD_NUMBER}
+                    export IMAGE_TAG="$IMAGE_TAG"
 
                     docker compose down
                     docker compose pull
@@ -77,7 +83,7 @@ pipeline {
         }
 
         failure {
-            echo 'CI/CD pipeline failed.'
+            echo 'CI/CD pipeline failed. Check the Jenkins console log.'
         }
     }
 }
