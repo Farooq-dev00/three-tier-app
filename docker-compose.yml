@@ -8,9 +8,9 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "mongosh --quiet --eval \"db.adminCommand('ping').ok\""]
       interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
+      timeout: 10s
+      retries: 8
+      start_period: 40s
 
   backend:
     image: 377418125520.dkr.ecr.eu-north-1.amazonaws.com/three-tier-app-backend:${IMAGE_TAG:-latest}
