@@ -7,6 +7,12 @@ pipeline {
 
         BACKEND_IMAGE = "${ECR_REGISTRY}/three-tier-app-backend"
         FRONTEND_IMAGE = "${ECR_REGISTRY}/three-tier-app-frontend"
+
+        DOCKERHUB_BACKEND = 'umarfarooq00/three-tier-app-backend'
+        DOCKERHUB_FRONTEND = 'umarfarooq00/three-tier-app-frontend'
+
+        GHCR_BACKEND = 'ghcr.io/farooq-dev00/three-tier-app-backend'
+        GHCR_FRONTEND = 'ghcr.io/farooq-dev00/three-tier-app-frontend'
     }
 
     stages {
@@ -37,8 +43,6 @@ pipeline {
                         env.ENV_NAME = 'stg'
                     } else if (env.BRANCH_NAME == 'prod') {
                         env.ENV_NAME = 'prod'
-                    } else {
-                        env.ENV_NAME = 'main'
                     }
 
                     env.IMAGE_TAG = "${env.ENV_NAME}-${env.BUILD_NUMBER}"
@@ -50,22 +54,46 @@ pipeline {
             }
         }
 
-        stage('Login to ECR') {
+        stage('Login to Registries') {
             steps {
                 withCredentials([
                     usernamePassword(
                         credentialsId: 'aws-ecr',
                         usernameVariable: 'AWS_ACCESS_KEY_ID',
                         passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+                    ),
+                    usernamePassword(
+                        credentialsId: 'dockerhub-credentials',
+                        usernameVariable: 'DOCKERHUB_USER',
+                        passwordVariable: 'DOCKERHUB_TOKEN'
+                    ),
+                    usernamePassword(
+                        credentialsId: 'ghcr-credentials',
+                        usernameVariable: 'GHCR_USER',
+                        passwordVariable: 'GHCR_TOKEN'
                     )
                 ]) {
                     sh '''
                         export AWS_DEFAULT_REGION="$AWS_REGION"
 
+                        echo "Logging into Amazon ECR..."
                         aws ecr get-login-password \
                         | docker login \
                         --username AWS \
                         --password-stdin "$ECR_REGISTRY"
+
+                        echo "Logging into Docker Hub..."
+                        echo "$DOCKERHUB_TOKEN" \
+                        | docker login \
+                        --username "$DOCKERHUB_USER" \
+                        --password-stdin
+
+                        echo "Logging into GitHub Container Registry..."
+                        echo "$GHCR_TOKEN" \
+                        | docker login \
+                        ghcr.io \
+                        --username "$GHCR_USER" \
+                        --password-stdin
                     '''
                 }
             }
@@ -74,9 +102,13 @@ pipeline {
         stage('Build Docker Images') {
             steps {
                 sh '''
+                    echo "Building backend image..."
+
                     docker build \
                         -t "$BACKEND_IMAGE:$IMAGE_TAG" \
                         ./backend
+
+                    echo "Building frontend image..."
 
                     docker build \
                         -t "$FRONTEND_IMAGE:$IMAGE_TAG" \
@@ -85,11 +117,52 @@ pipeline {
             }
         }
 
-        stage('Push Images to ECR') {
+        stage('Tag Images') {
             steps {
                 sh '''
+                    echo "Tagging backend image..."
+
+                    docker tag \
+                        "$BACKEND_IMAGE:$IMAGE_TAG" \
+                        "$DOCKERHUB_BACKEND:$IMAGE_TAG"
+
+                    docker tag \
+                        "$BACKEND_IMAGE:$IMAGE_TAG" \
+                        "$GHCR_BACKEND:$IMAGE_TAG"
+
+                    echo "Tagging frontend image..."
+
+                    docker tag \
+                        "$FRONTEND_IMAGE:$IMAGE_TAG" \
+                        "$DOCKERHUB_FRONTEND:$IMAGE_TAG"
+
+                    docker tag \
+                        "$FRONTEND_IMAGE:$IMAGE_TAG" \
+                        "$GHCR_FRONTEND:$IMAGE_TAG"
+                '''
+            }
+        }
+
+        stage('Push Images') {
+            steps {
+                sh '''
+                    echo "Pushing backend to ECR..."
                     docker push "$BACKEND_IMAGE:$IMAGE_TAG"
+
+                    echo "Pushing frontend to ECR..."
                     docker push "$FRONTEND_IMAGE:$IMAGE_TAG"
+
+                    echo "Pushing backend to Docker Hub..."
+                    docker push "$DOCKERHUB_BACKEND:$IMAGE_TAG"
+
+                    echo "Pushing frontend to Docker Hub..."
+                    docker push "$DOCKERHUB_FRONTEND:$IMAGE_TAG"
+
+                    echo "Pushing backend to GHCR..."
+                    docker push "$GHCR_BACKEND:$IMAGE_TAG"
+
+                    echo "Pushing frontend to GHCR..."
+                    docker push "$GHCR_FRONTEND:$IMAGE_TAG"
                 '''
             }
         }
