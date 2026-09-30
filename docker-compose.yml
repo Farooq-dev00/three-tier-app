@@ -16,7 +16,7 @@ services:
     image: 377418125520.dkr.ecr.eu-north-1.amazonaws.com/three-tier-app-backend:${IMAGE_TAG:-latest}
     restart: unless-stopped
     ports:
-      - "5000:5000"
+      - "7001:5000"
     environment:
       MONGO_URI: mongodb://mongodb:27017
     depends_on:
@@ -27,7 +27,7 @@ services:
     image: 377418125520.dkr.ecr.eu-north-1.amazonaws.com/three-tier-app-frontend:${IMAGE_TAG:-latest}
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "5002:3000"
     depends_on:
       - backend
 
