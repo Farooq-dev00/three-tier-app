@@ -4,16 +4,49 @@ pipeline {
     environment {
         AWS_REGION = 'eu-north-1'
         ECR_REGISTRY = '377418125520.dkr.ecr.eu-north-1.amazonaws.com'
+
         BACKEND_IMAGE = "${ECR_REGISTRY}/three-tier-app-backend"
         FRONTEND_IMAGE = "${ECR_REGISTRY}/three-tier-app-frontend"
-        IMAGE_TAG = "${BUILD_NUMBER}"
     }
 
     stages {
 
+        stage('Check Branch') {
+            steps {
+                script {
+                    if (!(env.BRANCH_NAME in ['dev', 'stg', 'prod'])) {
+                        currentBuild.result = 'NOT_BUILT'
+                        error("This pipeline is only configured for dev, stg, and prod branches.")
+                    }
+                }
+            }
+        }
+
         stage('Checkout') {
             steps {
                 checkout scm
+            }
+        }
+
+        stage('Set Environment') {
+            steps {
+                script {
+                    if (env.BRANCH_NAME == 'dev') {
+                        env.ENV_NAME = 'dev'
+                    } else if (env.BRANCH_NAME == 'stg') {
+                        env.ENV_NAME = 'stg'
+                    } else if (env.BRANCH_NAME == 'prod') {
+                        env.ENV_NAME = 'prod'
+                    } else {
+                        env.ENV_NAME = 'main'
+                    }
+
+                    env.IMAGE_TAG = "${env.ENV_NAME}-${env.BUILD_NUMBER}"
+
+                    echo "Branch: ${env.BRANCH_NAME}"
+                    echo "Environment: ${env.ENV_NAME}"
+                    echo "Image tag: ${env.IMAGE_TAG}"
+                }
             }
         }
 
@@ -41,8 +74,13 @@ pipeline {
         stage('Build Docker Images') {
             steps {
                 sh '''
-                    docker build -t "$BACKEND_IMAGE:$IMAGE_TAG" ./backend
-                    docker build -t "$FRONTEND_IMAGE:$IMAGE_TAG" ./frontend
+                    docker build \
+                        -t "$BACKEND_IMAGE:$IMAGE_TAG" \
+                        ./backend
+
+                    docker build \
+                        -t "$FRONTEND_IMAGE:$IMAGE_TAG" \
+                        ./frontend
                 '''
             }
         }
@@ -57,21 +95,43 @@ pipeline {
         }
 
         stage('Deploy') {
+            when {
+                expression {
+                    return env.BRANCH_NAME in ['dev', 'stg', 'prod']
+                }
+            }
+
             steps {
                 sh '''
                     export IMAGE_TAG="$IMAGE_TAG"
 
-                    docker compose down
-                    docker compose pull
-                    docker compose up -d
+                    docker compose \
+                        -p "three-tier-${ENV_NAME}" \
+                        down
+
+                    docker compose \
+                        -p "three-tier-${ENV_NAME}" \
+                        pull
+
+                    docker compose \
+                        -p "three-tier-${ENV_NAME}" \
+                        up -d
                 '''
             }
         }
 
         stage('Verify') {
+            when {
+                expression {
+                    return env.BRANCH_NAME in ['dev', 'stg', 'prod']
+                }
+            }
+
             steps {
                 sh '''
-                    docker compose ps
+                    docker compose \
+                        -p "three-tier-${ENV_NAME}" \
+                        ps
                 '''
             }
         }
@@ -79,11 +139,11 @@ pipeline {
 
     post {
         success {
-            echo 'CI/CD pipeline completed successfully!'
+            echo "CI/CD pipeline completed successfully for ${BRANCH_NAME}"
         }
 
         failure {
-            echo 'CI/CD pipeline failed. Check the Jenkins console log.'
+            echo "CI/CD pipeline failed for ${BRANCH_NAME}. Check the Jenkins console log."
         }
     }
 }
